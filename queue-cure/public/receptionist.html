@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Queue Cure — Receptionist</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<div class="container">
+  <h1>Queue Cure — Receptionist</h1>
+
+  <div class="card">
+    <div id="nowServing" class="now-serving">No patient called yet</div>
+  </div>
+
+  <div class="card">
+    <h2>Add Patient</h2>
+    <div class="row">
+      <input id="nameInput" type="text" placeholder="Patient name" />
+      <button id="addBtn" disabled>Add Patient</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Queue Control</h2>
+    <div class="row">
+      <button id="callNextBtn" disabled>Call Next</button>
+    </div>
+    <div class="row" style="margin-top:16px;">
+      <label for="avgInput">Avg consultation time (min):</label>
+      <input id="avgInput" type="number" min="0" step="1" style="width:100px" />
+      <button id="updateAvgBtn" class="secondary">Update</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>All Tokens</h2>
+    <table>
+      <thead><tr><th>#</th><th>Name</th><th>Status</th></tr></thead>
+      <tbody id="tokenList"></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+let state = { tokens: [], currentToken: null, avgConsultTime: 5, nextTokenNumber: 1 };
+
+const nameInput = document.getElementById('nameInput');
+const addBtn = document.getElementById('addBtn');
+const callNextBtn = document.getElementById('callNextBtn');
+const avgInput = document.getElementById('avgInput');
+const updateAvgBtn = document.getElementById('updateAvgBtn');
+const nowServing = document.getElementById('nowServing');
+const tokenList = document.getElementById('tokenList');
+
+nameInput.addEventListener('input', () => {
+  addBtn.disabled = nameInput.value.trim() === '';
+});
+
+addBtn.addEventListener('click', () => {
+  const name = nameInput.value.trim();
+  if (!name) return;
+  socket.emit('add_patient', { name });
+  nameInput.value = '';
+  addBtn.disabled = true;
+});
+
+nameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !addBtn.disabled) addBtn.click();
+});
+
+callNextBtn.addEventListener('click', () => {
+  callNextBtn.disabled = true; // optimistic, server will reconfirm
+  socket.emit('call_next');
+});
+
+updateAvgBtn.addEventListener('click', () => {
+  const minutes = Number(avgInput.value);
+  if (!Number.isFinite(minutes) || minutes < 0) return;
+  socket.emit('set_avg_time', { minutes });
+});
+
+socket.on('connect', () => socket.emit('request_state'));
+
+socket.on('queue_updated', (s) => {
+  state = s;
+  render();
+});
+
+function render() {
+  // Now serving
+  if (state.currentToken) {
+    const cur = state.tokens.find(t => t.number === state.currentToken);
+    nowServing.textContent = `Now Serving: Token #${state.currentToken}` + (cur ? ` — ${cur.name}` : '');
+  } else {
+    nowServing.textContent = 'No patient called yet';
+  }
+
+  // Call next button
+  const hasWaiting = state.tokens.some(t => t.status === 'waiting');
+  callNextBtn.disabled = !hasWaiting;
+
+  // Avg input (only set if user not editing)
+  if (document.activeElement !== avgInput) {
+    avgInput.value = state.avgConsultTime;
+  }
+
+  // Token list
+  tokenList.innerHTML = state.tokens.map(t =>
+    `<tr class="${t.status}"><td>${t.number}</td><td>${escapeHtml(t.name)}</td><td>${t.status}</td></tr>`
+  ).join('');
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+</script>
+</body>
+</html>

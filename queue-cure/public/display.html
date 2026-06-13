@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Queue Cure — Display</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<div class="container">
+  <h1>Queue Cure</h1>
+
+  <div class="card">
+    <div id="nowServing" class="now-serving huge">No patient called yet</div>
+  </div>
+
+  <div class="card">
+    <h2>Check your status</h2>
+    <div class="row">
+      <input id="tokenInput" type="number" min="1" placeholder="Your token #" />
+      <button id="checkBtn">Check</button>
+    </div>
+    <div id="statusMsg" class="status-msg muted">Enter your token number to see your wait time.</div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+let state = { tokens: [], currentToken: null, avgConsultTime: 5, nextTokenNumber: 1 };
+let checkedToken = null;
+
+const nowServing = document.getElementById('nowServing');
+const tokenInput = document.getElementById('tokenInput');
+const checkBtn = document.getElementById('checkBtn');
+const statusMsg = document.getElementById('statusMsg');
+
+checkBtn.addEventListener('click', () => {
+  const n = parseInt(tokenInput.value, 10);
+  checkedToken = Number.isFinite(n) ? n : null;
+  renderStatus();
+});
+
+tokenInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') checkBtn.click();
+});
+
+socket.on('connect', () => socket.emit('request_state'));
+
+socket.on('queue_updated', (s) => {
+  state = s;
+  renderNow();
+  renderStatus();
+});
+
+function renderNow() {
+  if (state.currentToken) {
+    nowServing.textContent = `Now Serving: Token #${state.currentToken}`;
+  } else {
+    nowServing.textContent = 'No patient called yet';
+  }
+}
+
+function renderStatus() {
+  if (checkedToken == null) {
+    statusMsg.className = 'status-msg muted';
+    statusMsg.textContent = 'Enter your token number to see your wait time.';
+    return;
+  }
+  const token = state.tokens.find(t => t.number === checkedToken);
+  if (!token) {
+    statusMsg.className = 'status-msg';
+    statusMsg.textContent = `Token #${checkedToken} does not exist.`;
+    return;
+  }
+  if (token.status === 'done') {
+    statusMsg.className = 'status-msg';
+    statusMsg.textContent = `Token #${checkedToken} has already been served.`;
+    return;
+  }
+  if (token.status === 'in-progress') {
+    statusMsg.className = 'status-msg';
+    statusMsg.textContent = `It's your turn! Token #${checkedToken} is being served now.`;
+    return;
+  }
+  // waiting: count waiting tokens with smaller number, plus 1 if someone is in-progress
+  const ahead = state.tokens.filter(t => t.status === 'waiting' && t.number < checkedToken).length
+              + (state.currentToken ? 1 : 0);
+  const wait = ahead * state.avgConsultTime;
+  statusMsg.className = 'status-msg';
+  statusMsg.textContent = `Tokens ahead of you: ${ahead}. Estimated wait: ~${wait} minutes.`;
+}
+</script>
+</body>
+</html>
