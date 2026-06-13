@@ -53,12 +53,22 @@ socket.on('queue_updated', (s) => {
   renderStatus();
 });
 
+let lastShownToken = undefined;
+
 function renderNow() {
   if (state.currentToken) {
-    nowServing.textContent = `Now Serving: Token #${state.currentToken}`;
+    nowServing.textContent = `Token #${state.currentToken}`;
   } else {
     nowServing.textContent = 'No patient called yet';
   }
+
+  if (lastShownToken !== undefined && lastShownToken !== state.currentToken) {
+    nowServing.classList.remove('pulse');
+    // restart animation
+    void nowServing.offsetWidth;
+    nowServing.classList.add('pulse');
+  }
+  lastShownToken = state.currentToken;
 }
 
 function renderStatus() {
